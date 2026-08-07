@@ -1,0 +1,26 @@
+# 1. 다이렉트(직접) 접속 가능한 스위치들
+direct_switches:
+  - name: switch_01
+    host: 192.168.1.10
+    username: admin
+    password: "YOUR_PASSWORD"
+    port: 22
+    device_type: cisco_ios
+
+# 2. 경유지(Bastion) 스위치 정보 (그 자체도 백업 대상)
+bastion_switch:
+  name: bastion_01
+  host: 192.168.1.1
+  username: admin
+  password: "YOUR_PASSWORD"
+  port: 22
+  device_type: cisco_ios
+
+# 3. 경유지 스위치를 타고 들어가야 하는 내부망 스위치들
+internal_switches:
+  - name: internal_switch_01
+    host: 10.10.10.4
+    username: admin
+    password: "YOUR_PASSWORD"
+    port: 23
+    device_type: cisco_ios_telnet

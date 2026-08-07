@@ -1,0 +1,10 @@
+# Backups
+backups/*.txt
+
+# Sensitive Configuration (Use .example files as templates)
+project/devices.yml
+ssh_config
+
+# Environment & Secrets
+.env
+*.log

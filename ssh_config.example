@@ -1,0 +1,7 @@
+Host bastion_host
+    HostName 192.168.1.1
+    User admin
+	
+Host internal_switch_01
+    User admin
+    ProxyJump bastion_host

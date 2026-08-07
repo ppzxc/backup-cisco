@@ -1,0 +1,16 @@
+services:
+  ansible:
+    image: quay.io/ansible/creator-ee:latest
+    container_name: cisco-switch-scraper
+    user: "root"
+    entrypoint: []
+    tty: true
+    stdin_open: true
+    volumes:
+      - ./project:/ansible/project
+      - ./backups:/ansible/backups
+      - ./ssh_config:/root/.ssh/config:ro
+    environment:
+      - ANSIBLE_HOST_KEY_CHECKING=False
+    working_dir: /ansible/project
+    command: sh -c "pip install --no-cache-dir netmiko pyyaml && python3 scraper.py"
