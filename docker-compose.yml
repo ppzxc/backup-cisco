@@ -1,7 +1,7 @@
 services:
-  ansible:
+  backup-cisco:
     image: quay.io/ansible/creator-ee:latest
-    container_name: cisco-switch-scraper
+    container_name: backup-cisco
     user: "root"
     entrypoint: []
     tty: true

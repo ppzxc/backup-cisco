@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-SERVICE_NAME="cisco-backup"
+SERVICE_NAME="backup-cisco"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 TIMER_FILE="/etc/systemd/system/${SERVICE_NAME}.timer"
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -32,7 +32,7 @@ Requires=docker.service
 [Service]
 Type=oneshot
 WorkingDirectory=${PROJECT_DIR}
-ExecStart=${DOCKER_BIN} compose run --rm ansible
+ExecStart=${DOCKER_BIN} compose run --rm backup-cisco
 
 [Install]
 WantedBy=multi-user.target

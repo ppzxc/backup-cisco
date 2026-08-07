@@ -12,7 +12,8 @@ today = datetime.datetime.now().strftime("%Y%m%d")
 with open("devices.yml", "r", encoding="utf-8") as f:
     config_data = yaml.safe_load(f)
 
-direct_switches = config_data.get("direct_switches", [])
+BACKUP_DIR = os.environ.get("BACKUP_DIR", "/ansible/backups")
+os.makedirs(BACKUP_DIR, exist_ok=True)
 bastion_info = config_data.get("bastion_switch")
 internal_switches = config_data.get("internal_switches", [])
 
@@ -43,7 +44,7 @@ def backup_device(device_info, custom_name):
                 net_connect.enable() 
             
             config = net_connect.send_command("show running-config", read_timeout=60)
-            file_path = f"/ansible/backups/{custom_name}_{today}.txt"
+            file_path = os.path.join(BACKUP_DIR, f"{custom_name}_{today}.txt")
             with open(file_path, "w", encoding="utf-8") as file:
                 file.write(config)
             print(f" 백업 성공: {file_path}")
@@ -125,7 +126,7 @@ if bastion_info and internal_switches:
             print(f"-> {sw['name']} 설정 스크래핑 중...")
             config_result = net_connect.send_command("show running-config")
             
-            file_path = f"/ansible/backups/{sw['name']}_{today}.txt"
+            file_path = os.path.join(BACKUP_DIR, f"{sw['name']}_{today}.txt")
             with open(file_path, "w", encoding="utf-8") as file:
                 file.write(config_result)
             print(f" 백업 성공: {file_path}")
