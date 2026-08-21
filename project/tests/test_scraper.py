@@ -3,6 +3,7 @@ import os
 import sys
 import tempfile
 import unittest
+from io import StringIO
 from unittest.mock import patch
 from pathlib import Path
 
@@ -77,6 +78,25 @@ class ScraperTests(unittest.TestCase):
         with patch.object(scraper.time, "sleep"):
             self.assertEqual(scraper.retry(operation, "test"), "ok")
         self.assertEqual(len(attempts), 3)
+
+    def test_direct_backup_reports_connection_stage_without_exception_details(self):
+        output = StringIO()
+        with patch.object(scraper, "open_connection", side_effect=OSError("secret connection detail")), patch("sys.stdout", output):
+            ok, reason = scraper.backup_direct(DEVICE, dt.datetime(2026, 8, 21))
+        self.assertFalse(ok)
+        self.assertEqual(reason, "직접 연결/인증 실패")
+        self.assertIn("직접 연결/인증 실패", output.getvalue())
+        self.assertNotIn("secret connection detail", output.getvalue())
+
+    def test_direct_backup_reports_collection_stage_separately(self):
+        output = StringIO()
+        connection = unittest.mock.MagicMock()
+        with patch.object(scraper, "open_connection", return_value=connection), patch.object(scraper, "collect_config", side_effect=RuntimeError("secret command detail")), patch("sys.stdout", output):
+            ok, reason = scraper.backup_direct(DEVICE, dt.datetime(2026, 8, 21))
+        self.assertFalse(ok)
+        self.assertEqual(reason, "직접 설정 수집 실패")
+        self.assertIn("직접 설정 수집 실패", output.getvalue())
+        self.assertNotIn("secret command detail", output.getvalue())
 
 
 if __name__ == "__main__":

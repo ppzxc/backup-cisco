@@ -127,12 +127,16 @@ def backup_direct(device: dict, run_at: dt.datetime) -> tuple[bool, str]:
     try:
         print(f"▶ 백업 시도: {device['name']} (직접 연결)")
         connection = open_connection(device)
+    except Exception:
+        print(f"❌ 백업 실패: {device['name']} — 직접 연결/인증 실패")
+        return False, "직접 연결/인증 실패"
+    try:
         path = save_config(device["name"], collect_config(connection), run_at)
         print(f"✅ 백업 성공: {device['name']} → {path.name}")
         return True, ""
     except Exception:
-        print(f"❌ 백업 실패: {device['name']} — 직접 연결 또는 설정 수집 실패")
-        return False, "직접 연결 또는 설정 수집 실패"
+        print(f"❌ 백업 실패: {device['name']} — 직접 설정 수집 실패")
+        return False, "직접 설정 수집 실패"
     finally:
         disconnect(connection)
 
@@ -159,13 +163,21 @@ def backup_internal(bastion: dict, device: dict, run_at: dt.datetime) -> tuple[b
     try:
         print(f"▶ 백업 시도: {device['name']} (Bastion 경유 연결)")
         connection = open_connection(bastion)
+    except Exception:
+        print(f"❌ 백업 실패: {device['name']} — Bastion 연결/인증 실패")
+        return False, "Bastion 연결/인증 실패"
+    try:
         jump_to_internal(connection, device)
+    except Exception:
+        print(f"❌ 백업 실패: {device['name']} — 내부망 점프 연결/인증 실패")
+        return False, "내부망 점프 연결/인증 실패"
+    try:
         path = save_config(device["name"], collect_config(connection), run_at)
         print(f"✅ 백업 성공: {device['name']} → {path.name}")
         return True, ""
     except Exception:
-        print(f"❌ 백업 실패: {device['name']} — Bastion 경유 연결 또는 설정 수집 실패")
-        return False, "Bastion 경유 연결 또는 설정 수집 실패"
+        print(f"❌ 백업 실패: {device['name']} — 내부망 설정 수집 실패")
+        return False, "내부망 설정 수집 실패"
     finally:
         disconnect(connection)
 
