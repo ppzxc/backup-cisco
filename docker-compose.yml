@@ -1,16 +1,13 @@
 services:
   backup-cisco:
-    image: quay.io/ansible/creator-ee:latest
+    build:
+      context: .
+    image: backup-cisco:local
     container_name: backup-cisco
-    user: "root"
-    entrypoint: []
-    tty: true
-    stdin_open: true
+    user: "${BACKUP_UID:-1000}:${BACKUP_GID:-1000}"
     volumes:
       - ./project:/ansible/project
       - ./backups:/ansible/backups
-      - ./ssh_config:/root/.ssh/config:ro
     environment:
       - ANSIBLE_HOST_KEY_CHECKING=False
     working_dir: /ansible/project
-    command: sh -c "pip install --no-cache-dir netmiko pyyaml && python3 scraper.py"

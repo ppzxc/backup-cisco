@@ -1,0 +1,10 @@
+netmiko==4.7.0
+PyYAML==6.0.3
+invoke==3.0.3
+ntc-templates==9.2.0
+paramiko==4.0.0
+pyserial==3.5
+rich==15.0.0
+ruamel.yaml==0.18.6
+scp==0.16.1
+textfsm==2.1.0
