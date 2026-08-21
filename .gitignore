@@ -3,6 +3,8 @@ backups/*.txt
 
 # Sensitive Configuration (Use .example files as templates)
 project/devices.yml
+__pycache__/
+*.py[cod]
 ssh_config
 
 # Environment & Secrets

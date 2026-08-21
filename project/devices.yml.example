@@ -23,4 +23,5 @@ internal_switches:
     username: admin
     password: "YOUR_PASSWORD"
     port: 23
+    transport: telnet
     device_type: cisco_ios_telnet
