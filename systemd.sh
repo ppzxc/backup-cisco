@@ -4,6 +4,7 @@ set -e
 SERVICE_NAME="backup-cisco"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 TIMER_FILE="/etc/systemd/system/${SERVICE_NAME}.timer"
+SERVICE_HOME="/var/lib/${SERVICE_NAME}"
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 DOCKER_BIN="$(which docker || echo "/usr/bin/docker")"
@@ -26,8 +27,10 @@ install_systemd() {
         groupadd --system "$SERVICE_NAME"
     fi
     if ! id -u "$SERVICE_NAME" >/dev/null 2>&1; then
-        useradd --system --gid "$SERVICE_NAME" --home-dir "$PROJECT_DIR" \
+        useradd --system --gid "$SERVICE_NAME" --home-dir "$SERVICE_HOME" \
             --shell /usr/sbin/nologin "$SERVICE_NAME"
+    else
+        usermod --home "$SERVICE_HOME" "$SERVICE_NAME"
     fi
     if getent group docker >/dev/null; then
         usermod -aG docker "$SERVICE_NAME"
@@ -40,11 +43,17 @@ install_systemd() {
         exit 1
     fi
 
+    install -d -o "$SERVICE_NAME" -g "$SERVICE_NAME" -m 0700 "$SERVICE_HOME"
     install -d -o "$SERVICE_NAME" -g "$SERVICE_NAME" -m 0700 "$PROJECT_DIR/backups"
     chown root:"$SERVICE_NAME" "$PROJECT_DIR/project/devices.yml"
     chmod 0640 "$PROJECT_DIR/project/devices.yml"
     BACKUP_UID="$(id -u "$SERVICE_NAME")"
     BACKUP_GID="$(id -g "$SERVICE_NAME")"
+    if ! runuser -u "$SERVICE_NAME" -- env HOME="$SERVICE_HOME" DOCKER_CONFIG="$SERVICE_HOME/.docker" "$DOCKER_BIN" compose version >/dev/null 2>&1; then
+        echo "❌ backup-cisco 계정에서 Docker Compose 플러그인을 실행할 수 없습니다."
+        echo "   Docker Compose 플러그인을 시스템 전체에 설치한 뒤 다시 실행하세요."
+        exit 1
+    fi
 
     # 1. Service 파일 생성
     cat <<EOF > "$SERVICE_FILE"
@@ -60,6 +69,8 @@ Group=${SERVICE_NAME}
 WorkingDirectory=${PROJECT_DIR}
 Environment=BACKUP_UID=${BACKUP_UID}
 Environment=BACKUP_GID=${BACKUP_GID}
+Environment=HOME=${SERVICE_HOME}
+Environment=DOCKER_CONFIG=${SERVICE_HOME}/.docker
 ExecStart=${DOCKER_BIN} compose run --rm backup-cisco
 
 [Install]
