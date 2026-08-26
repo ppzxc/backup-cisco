@@ -97,12 +97,24 @@ webhook_token: "Bearer YOUR_BEARER_TOKEN"
 
 ## ⚙️ 실행 방법
 
-### 1. Docker Compose로 수동 실행 (테스트)
+### 1. Docker Compose로 수동 실행 (테스트 및 단발성 실행)
 
 ```bash
+# 기본 정기 백업 실행 (show running-config)
 BACKUP_UID=$(id -u) BACKUP_GID=$(id -g) docker compose run --rm backup-cisco
+
+# 단발성 진단 정보 수집 (show tech-support)
+BACKUP_UID=$(id -u) BACKUP_GID=$(id -g) docker compose run --rm backup-cisco --tech-support
+
+# 특정 장비 1대만 지정하여 수집 (예: ns0278)
+BACKUP_UID=$(id -u) BACKUP_GID=$(id -g) docker compose run --rm backup-cisco --target ns0278
+BACKUP_UID=$(id -u) BACKUP_GID=$(id -g) docker compose run --rm backup-cisco --tech-support --target ns0278
 ```
-최초 실행 또는 의존성 변경 뒤에는 먼저 `docker compose build backup-cisco`를 실행합니다. 백업 파일은 `backups/` 디렉터리에 `{장비명}_{YYYYMMDDTHHMMSS}.txt` 형식으로 저장됩니다. 같은 날 재실행해도 기존 파일을 덮어쓰지 않으며, 90일이 지난 백업은 다음 실행 중 정리됩니다.
+최초 실행 또는 의존성 변경 뒤에는 먼저 `docker compose build backup-cisco`를 실행합니다. 
+- 백업 파일: `backups/{장비명}_{YYYYMMDDTHHMMSS}.txt`
+- Tech-Support 파일: `backups/{장비명}_tech_{YYYYMMDDTHHMMSS}.txt`
+
+같은 날 재실행해도 기존 파일을 덮어쓰지 않으며, 90일이 지난 백업은 다음 실행 중 정리됩니다.
 
 ---
 

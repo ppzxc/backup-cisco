@@ -1,5 +1,4 @@
-"""Collect Cisco running configurations from direct and bastion-routed targets."""
-
+import argparse
 import datetime as dt
 import os
 import re
@@ -83,22 +82,23 @@ def retry(operation, label: str):
             time.sleep(delay)
 
 
-def connection_settings(device: dict) -> dict:
-    return {"device_type": device["device_type"], "host": device["host"], "username": device["username"], "password": device["password"], "port": device["port"], "secret": device["password"], "conn_timeout": 30, "read_timeout_override": 60, "global_delay_factor": 2}
+def connection_settings(device: dict, read_timeout: int = 60) -> dict:
+    return {"device_type": device["device_type"], "host": device["host"], "username": device["username"], "password": device["password"], "port": device["port"], "secret": device["password"], "conn_timeout": 30, "read_timeout_override": read_timeout, "global_delay_factor": 2}
 
 
-def open_connection(device: dict):
-    return retry(lambda: ConnectHandler(**connection_settings(device)), device["name"])
+def open_connection(device: dict, read_timeout: int = 60):
+    return retry(lambda: ConnectHandler(**connection_settings(device, read_timeout=read_timeout)), device["name"])
 
 
 def is_valid_config(config: str) -> bool:
     return bool(config.strip()) and not any(marker in config.lower() for marker in CLI_ERROR_MARKERS)
 
 
-def save_config(name: str, config: str, run_at: dt.datetime) -> Path:
+def save_config(name: str, config: str, run_at: dt.datetime, suffix: str = "") -> Path:
     BACKUP_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
     BACKUP_DIR.chmod(0o700)
-    destination = BACKUP_DIR / f"{name}_{run_at.strftime('%Y%m%dT%H%M%S')}.txt"
+    tag = f"_{suffix}" if suffix else ""
+    destination = BACKUP_DIR / f"{name}{tag}_{run_at.strftime('%Y%m%dT%H%M%S')}.txt"
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=BACKUP_DIR, delete=False) as file:
         file.write(config)
         temporary = Path(file.name)
@@ -108,10 +108,10 @@ def save_config(name: str, config: str, run_at: dt.datetime) -> Path:
     return destination
 
 
-def collect_config(connection) -> str:
+def collect_config(connection, command: str = "show running-config", read_timeout: int = 60) -> str:
     if not connection.check_enable_mode():
         connection.enable()
-    config = connection.send_command("show running-config", read_timeout=60)
+    config = connection.send_command(command, read_timeout=read_timeout)
     if not is_valid_config(config):
         raise RuntimeError("invalid configuration output")
     return config
@@ -122,16 +122,16 @@ def disconnect(connection) -> None:
         connection.disconnect()
 
 
-def backup_direct(device: dict, run_at: dt.datetime) -> tuple[bool, str]:
+def backup_direct(device: dict, run_at: dt.datetime, command: str = "show running-config", read_timeout: int = 60, suffix: str = "") -> tuple[bool, str]:
     connection = None
     try:
         print(f"▶ 백업 시도: {device['name']} (직접 연결)")
-        connection = open_connection(device)
+        connection = open_connection(device, read_timeout=read_timeout)
     except Exception:
         print(f"❌ 백업 실패: {device['name']} — 직접 연결/인증 실패")
         return False, "직접 연결/인증 실패"
     try:
-        path = save_config(device["name"], collect_config(connection), run_at)
+        path = save_config(device["name"], collect_config(connection, command=command, read_timeout=read_timeout), run_at, suffix=suffix)
         print(f"✅ 백업 성공: {device['name']} → {path.name}")
         return True, ""
     except Exception:
@@ -158,11 +158,11 @@ def jump_to_internal(connection, device: dict) -> None:
     connection.secret = device["password"]
 
 
-def backup_internal(bastion: dict, device: dict, run_at: dt.datetime) -> tuple[bool, str]:
+def backup_internal(bastion: dict, device: dict, run_at: dt.datetime, command: str = "show running-config", read_timeout: int = 60, suffix: str = "") -> tuple[bool, str]:
     connection = None
     try:
         print(f"▶ 백업 시도: {device['name']} (Bastion 경유 연결)")
-        connection = open_connection(bastion)
+        connection = open_connection(bastion, read_timeout=read_timeout)
     except Exception:
         print(f"❌ 백업 실패: {device['name']} — Bastion 연결/인증 실패")
         return False, "Bastion 연결/인증 실패"
@@ -172,7 +172,7 @@ def backup_internal(bastion: dict, device: dict, run_at: dt.datetime) -> tuple[b
         print(f"❌ 백업 실패: {device['name']} — 내부망 점프 연결/인증 실패")
         return False, "내부망 점프 연결/인증 실패"
     try:
-        path = save_config(device["name"], collect_config(connection), run_at)
+        path = save_config(device["name"], collect_config(connection, command=command, read_timeout=read_timeout), run_at, suffix=suffix)
         print(f"✅ 백업 성공: {device['name']} → {path.name}")
         return True, ""
     except Exception:
@@ -192,8 +192,8 @@ def cleanup_artifacts(now: dt.datetime) -> None:
         print("[보존 정책] 만료 산출물 정리에 실패했습니다.")
 
 
-def report_text(run_at: dt.datetime, successes: list[str], failures: list[tuple[str, str]]) -> str:
-    lines = ["[시스코 스위치 백업 결과 리포트]", f"- 일자: {run_at.strftime('%Y%m%d')}", f"- 총 대상: {len(successes) + len(failures)}대 (성공: {len(successes)}대, 실패: {len(failures)}대)", "", f"[성공 목록 ({len(successes)}대)]", ", ".join(successes) if successes else "없음", "", f"[실패 목록 ({len(failures)}대)]"]
+def report_text(run_at: dt.datetime, successes: list[str], failures: list[tuple[str, str]], title: str = "[시스코 스위치 백업 결과 리포트]") -> str:
+    lines = [title, f"- 일자: {run_at.strftime('%Y%m%d')}", f"- 총 대상: {len(successes) + len(failures)}대 (성공: {len(successes)}대, 실패: {len(failures)}대)", "", f"[성공 목록 ({len(successes)}대)]", ", ".join(successes) if successes else "없음", "", f"[실패 목록 ({len(failures)}대)]"]
     return "\n".join(lines + ([f"- {name}: {reason}" for name, reason in failures] if failures else ["없음"]))
 
 
@@ -219,25 +219,59 @@ def send_notification(inventory: dict, payload: str) -> bool:
         return False
 
 
-def run() -> int:
+def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="시스코 스위치 설정 및 진단 정보 수집 스크립트")
+    parser.add_argument("--tech-support", action="store_true", help="show tech-support 진단 정보 수집 (미지정 시 show running-config 백업)")
+    parser.add_argument("--target", type=str, help="특정 장비 1대만 지정하여 수집 (예: ns0278)")
+    parser.add_argument("--timeout", type=int, help="명령어 응답 대기 시간(초) 직접 지정 (기본값: tech-support는 300초, 백업은 60초)")
+    return parser.parse_args(argv)
+
+
+def run(argv: list[str] | None = None) -> int:
+    args = parse_arguments(argv)
     try:
         inventory = load_inventory(INVENTORY_PATH)
         direct, bastion, internal = validate_inventory(inventory)
     except (OSError, yaml.YAMLError, InventoryError):
         print("[인벤토리] 구성 오류로 백업을 시작하지 않습니다.")
         return 1
+
+    command = "show tech-support" if args.tech_support else "show running-config"
+    default_timeout = 300 if args.tech_support else 60
+    read_timeout = args.timeout if args.timeout and args.timeout > 0 else default_timeout
+    suffix = "tech" if args.tech_support else ""
+    title = "[시스코 스위치 Tech-Support 수집 결과 리포트]" if args.tech_support else "[시스코 스위치 백업 결과 리포트]"
+
+    if args.target:
+        all_targets = [d["name"] for d in direct] + ([bastion["name"]] if bastion else []) + [d["name"] for d in internal]
+        if args.target not in all_targets:
+            print(f"[인벤토리] 대상 장비 '{args.target}'를 인벤토리에서 찾을 수 없습니다.")
+            return 1
+        direct = [d for d in direct if d["name"] == args.target]
+        if bastion and bastion["name"] != args.target:
+            # Bastion 자신이 대상이 아니더라도 internal 장비 점프를 위해 bastion 정보는 유지
+            bastion_target = False
+        else:
+            bastion_target = bool(bastion and bastion["name"] == args.target)
+        internal = [d for d in internal if d["name"] == args.target]
+    else:
+        bastion_target = bool(bastion)
+
     run_at, successes, failures = dt.datetime.now().astimezone(), [], []
     for device in direct:
-        ok, reason = backup_direct(device, run_at)
+        ok, reason = backup_direct(device, run_at, command=command, read_timeout=read_timeout, suffix=suffix)
         successes.append(device["name"]) if ok else failures.append((device["name"], reason))
+
     if bastion:
-        ok, reason = backup_direct(bastion, run_at)
-        successes.append(bastion["name"]) if ok else failures.append((bastion["name"], reason))
+        if bastion_target:
+            ok, reason = backup_direct(bastion, run_at, command=command, read_timeout=read_timeout, suffix=suffix)
+            successes.append(bastion["name"]) if ok else failures.append((bastion["name"], reason))
         for device in internal:
-            ok, reason = backup_internal(bastion, device, run_at)
+            ok, reason = backup_internal(bastion, device, run_at, command=command, read_timeout=read_timeout, suffix=suffix)
             successes.append(device["name"]) if ok else failures.append((device["name"], reason))
+
     cleanup_artifacts(run_at)
-    report = report_text(run_at, successes, failures)
+    report = report_text(run_at, successes, failures, title=title)
     print(f"\n{report}")
     return 1 if failures or not send_notification(inventory, report) else 0
 

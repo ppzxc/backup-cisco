@@ -98,6 +98,29 @@ class ScraperTests(unittest.TestCase):
         self.assertIn("직접 설정 수집 실패", output.getvalue())
         self.assertNotIn("secret command detail", output.getvalue())
 
+    def test_save_config_with_suffix(self):
+        old_dir = scraper.BACKUP_DIR
+        with tempfile.TemporaryDirectory() as directory:
+            scraper.BACKUP_DIR = Path(directory)
+            path = scraper.save_config("switch-01", "tech support output\n", dt.datetime(2026, 8, 21, 3, 0, 0), suffix="tech")
+            self.assertEqual(path.name, "switch-01_tech_20260821T030000.txt")
+            self.assertEqual(path.read_text(encoding="utf-8"), "tech support output\n")
+        scraper.BACKUP_DIR = old_dir
+
+    def test_parse_arguments_default_and_custom(self):
+        args_default = scraper.parse_arguments([])
+        self.assertFalse(args_default.tech_support)
+        self.assertIsNone(args_default.target)
+
+        args_tech = scraper.parse_arguments(["--tech-support", "--target", "switch-01"])
+        self.assertTrue(args_tech.tech_support)
+        self.assertEqual(args_tech.target, "switch-01")
+
+    def test_report_text_custom_title(self):
+        report = scraper.report_text(dt.datetime(2026, 8, 21), ["switch-01"], [], title="[시스코 스위치 Tech-Support 수집 결과 리포트]")
+        self.assertIn("[시스코 스위치 Tech-Support 수집 결과 리포트]", report)
+        self.assertIn("switch-01", report)
+
 
 if __name__ == "__main__":
     unittest.main()
