@@ -7,7 +7,7 @@ TIMER_FILE="/etc/systemd/system/${SERVICE_NAME}.timer"
 SERVICE_HOME="/var/lib/${SERVICE_NAME}"
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-DOCKER_BIN="$(which docker || echo "/usr/bin/docker")"
+DOCKER_BIN="$(command -v docker || echo "/usr/bin/docker")"
 
 check_root() {
     if [ "$EUID" -ne 0 ]; then

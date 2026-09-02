@@ -248,11 +248,7 @@ def run(argv: list[str] | None = None) -> int:
             print(f"[인벤토리] 대상 장비 '{args.target}'를 인벤토리에서 찾을 수 없습니다.")
             return 1
         direct = [d for d in direct if d["name"] == args.target]
-        if bastion and bastion["name"] != args.target:
-            # Bastion 자신이 대상이 아니더라도 internal 장비 점프를 위해 bastion 정보는 유지
-            bastion_target = False
-        else:
-            bastion_target = bool(bastion and bastion["name"] == args.target)
+        bastion_target = bool(bastion and bastion["name"] == args.target)
         internal = [d for d in internal if d["name"] == args.target]
     else:
         bastion_target = bool(bastion)
@@ -273,7 +269,8 @@ def run(argv: list[str] | None = None) -> int:
     cleanup_artifacts(run_at)
     report = report_text(run_at, successes, failures, title=title)
     print(f"\n{report}")
-    return 1 if failures or not send_notification(inventory, report) else 0
+    notify_ok = send_notification(inventory, report)
+    return 1 if failures or not notify_ok else 0
 
 
 if __name__ == "__main__":
