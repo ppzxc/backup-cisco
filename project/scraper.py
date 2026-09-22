@@ -17,11 +17,16 @@ INVENTORY_PATH = Path(os.environ.get("INVENTORY_PATH", "devices.yml"))
 RETRY_DELAYS = (2, 5)
 RETENTION_DAYS = 90
 SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+HOSTNAME_LINE = re.compile(r"^hostname\s+(\S+)", re.MULTILINE | re.IGNORECASE)
 CLI_ERROR_MARKERS = ("% invalid input", "% incomplete command", "% ambiguous command")
 REQUIRED_DEVICE_FIELDS = ("name", "host", "username", "password", "port", "device_type")
 
 
 class InventoryError(ValueError):
+    pass
+
+
+class HostnameMismatchError(RuntimeError):
     pass
 
 
@@ -94,6 +99,20 @@ def is_valid_config(config: str) -> bool:
     return bool(config.strip()) and not any(marker in config.lower() for marker in CLI_ERROR_MARKERS)
 
 
+def extract_hostname(config: str) -> str | None:
+    match = HOSTNAME_LINE.search(config)
+    return match.group(1) if match else None
+
+
+def prompt_hostname(prompt: str) -> str:
+    return prompt.strip().rstrip("#>").strip()
+
+
+def verify_hostname(actual: str | None, expected: str) -> None:
+    if actual is None or actual.casefold() != expected.casefold():
+        raise HostnameMismatchError(f"hostname mismatch: expected {expected!r}, got {actual!r}")
+
+
 def save_config(name: str, config: str, run_at: dt.datetime, suffix: str = "") -> Path:
     BACKUP_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
     BACKUP_DIR.chmod(0o700)
@@ -127,13 +146,22 @@ def backup_direct(device: dict, run_at: dt.datetime, command: str = "show runnin
     try:
         print(f"▶ 백업 시도: {device['name']} (직접 연결)")
         connection = open_connection(device, read_timeout=read_timeout)
+        verify_hostname(prompt_hostname(connection.find_prompt()), device["name"])
+    except HostnameMismatchError:
+        print(f"❌ 백업 실패: {device['name']} — 직접 대상 장비 이름 불일치")
+        return False, "직접 대상 장비 이름 불일치"
     except Exception:
         print(f"❌ 백업 실패: {device['name']} — 직접 연결/인증 실패")
         return False, "직접 연결/인증 실패"
     try:
-        path = save_config(device["name"], collect_config(connection, command=command, read_timeout=read_timeout), run_at, suffix=suffix)
+        config = collect_config(connection, command=command, read_timeout=read_timeout)
+        verify_hostname(extract_hostname(config), device["name"])
+        path = save_config(device["name"], config, run_at, suffix=suffix)
         print(f"✅ 백업 성공: {device['name']} → {path.name}")
         return True, ""
+    except HostnameMismatchError:
+        print(f"❌ 백업 실패: {device['name']} — 직접 대상 장비 이름 불일치")
+        return False, "직접 대상 장비 이름 불일치"
     except Exception:
         print(f"❌ 백업 실패: {device['name']} — 직접 설정 수집 실패")
         return False, "직접 설정 수집 실패"
@@ -142,6 +170,7 @@ def backup_direct(device: dict, run_at: dt.datetime, command: str = "show runnin
 
 
 def jump_to_internal(connection, device: dict) -> None:
+    before_prompt = connection.find_prompt()
     command = f"ssh -p {device['port']} -l {device['username']} {device['host']}" if device["transport"] == "ssh" else f"telnet {device['host']} {device['port']}"
     connection.write_channel(f"{command}\n")
     time.sleep(2)
@@ -156,6 +185,10 @@ def jump_to_internal(connection, device: dict) -> None:
     time.sleep(2)
     redispatch(connection, device_type=device["device_type"])
     connection.secret = device["password"]
+    after_prompt = connection.find_prompt()
+    if after_prompt == before_prompt:
+        raise RuntimeError("jump to internal switch did not change the active session")
+    verify_hostname(prompt_hostname(after_prompt), device["name"])
 
 
 def backup_internal(bastion: dict, device: dict, run_at: dt.datetime, command: str = "show running-config", read_timeout: int = 60, suffix: str = "") -> tuple[bool, str]:
@@ -167,17 +200,26 @@ def backup_internal(bastion: dict, device: dict, run_at: dt.datetime, command: s
         print(f"❌ 백업 실패: {device['name']} — Bastion 연결/인증 실패")
         return False, "Bastion 연결/인증 실패"
     try:
-        jump_to_internal(connection, device)
-    except Exception:
-        print(f"❌ 백업 실패: {device['name']} — 내부망 점프 연결/인증 실패")
-        return False, "내부망 점프 연결/인증 실패"
-    try:
-        path = save_config(device["name"], collect_config(connection, command=command, read_timeout=read_timeout), run_at, suffix=suffix)
-        print(f"✅ 백업 성공: {device['name']} → {path.name}")
-        return True, ""
-    except Exception:
-        print(f"❌ 백업 실패: {device['name']} — 내부망 설정 수집 실패")
-        return False, "내부망 설정 수집 실패"
+        try:
+            jump_to_internal(connection, device)
+        except HostnameMismatchError:
+            print(f"❌ 백업 실패: {device['name']} — 내부망 대상 장비 이름 불일치")
+            return False, "내부망 대상 장비 이름 불일치"
+        except Exception:
+            print(f"❌ 백업 실패: {device['name']} — 내부망 점프 연결/인증 실패")
+            return False, "내부망 점프 연결/인증 실패"
+        try:
+            config = collect_config(connection, command=command, read_timeout=read_timeout)
+            verify_hostname(extract_hostname(config), device["name"])
+            path = save_config(device["name"], config, run_at, suffix=suffix)
+            print(f"✅ 백업 성공: {device['name']} → {path.name}")
+            return True, ""
+        except HostnameMismatchError:
+            print(f"❌ 백업 실패: {device['name']} — 내부망 대상 장비 이름 불일치")
+            return False, "내부망 대상 장비 이름 불일치"
+        except Exception:
+            print(f"❌ 백업 실패: {device['name']} — 내부망 설정 수집 실패")
+            return False, "내부망 설정 수집 실패"
     finally:
         disconnect(connection)
 
